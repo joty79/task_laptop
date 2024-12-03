@@ -1,6 +1,6 @@
 # Task Manager - Changelog
 
-## Added Features (March 21, 2024)
+## Added Features (December 03, 2024)
 
 ### Task Progress Visualization
 - Added a dynamic progress bar for each task
