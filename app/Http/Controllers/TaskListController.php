@@ -35,16 +35,44 @@ class TaskListController extends Controller
         return redirect()->route('task-lists.index')->with('success', 'Task list created successfully.');
     }
 
-    public function show(TaskList $taskList)
+    public function show(Request $request, TaskList $taskList)
     {
         Gate::authorize('view', $taskList);
         
-        $tasks = $taskList->tasks()
-            ->orderBy('deadline')
-            ->orderBy('priority')
-            ->get();
+        $query = $taskList->tasks();
 
-        return view('task-lists.show', compact('taskList', 'tasks'));
+        // Add search functionality
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where('title', 'LIKE', $search . '%');
+        }
+
+        // Filter by completion status
+        if ($request->has('status')) {
+            if ($request->status === 'completed') {
+                $query->where('is_completed', true);
+            } elseif ($request->status === 'pending') {
+                $query->where('is_completed', false);
+            }
+        }
+
+        // Sort tasks
+        $sortBy = $request->sort ?? 'deadline';
+        switch ($sortBy) {
+            case 'priority':
+                $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
+                break;
+            case 'deadline':
+                $query->orderBy('deadline');
+                break;
+            case 'completion':
+                $query->orderBy('is_completed')->orderBy('deadline');
+                break;
+        }
+
+        $tasks = $query->get();
+
+        return view('task-lists.show', compact('taskList', 'tasks', 'sortBy'));
     }
 
     public function destroy(TaskList $taskList)
@@ -52,5 +80,26 @@ class TaskListController extends Controller
         Gate::authorize('update', $taskList);
         $taskList->delete();
         return redirect()->route('task-lists.index')->with('success', 'Task list deleted successfully.');
+    }
+
+    public function edit(TaskList $taskList)
+    {
+        Gate::authorize('update', $taskList);
+        return view('task-lists.edit', compact('taskList'));
+    }
+
+    public function update(Request $request, TaskList $taskList)
+    {
+        Gate::authorize('update', $taskList);
+        
+        $validated = $request->validate([
+            'title' => 'required|max:255',
+            'description' => 'nullable|string',
+        ]);
+
+        $taskList->update($validated);
+
+        return redirect()->route('task-lists.index')
+            ->with('success', 'Task list updated successfully.');
     }
 } 

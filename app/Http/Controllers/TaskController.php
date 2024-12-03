@@ -17,7 +17,14 @@ class TaskController extends Controller
             'title' => 'required|max:255',
             'description' => 'nullable|string',
             'priority' => 'required|in:low,medium,high',
-            'deadline' => 'nullable|date',
+            'deadline' => [
+                'required',
+                'date',
+                'after_or_equal:today'
+            ],
+        ], [
+            'deadline.required' => 'The deadline field is required.',
+            'deadline.after_or_equal' => 'The deadline must be today or a future date.'
         ]);
 
         $taskList->tasks()->create($validated);

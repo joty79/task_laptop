@@ -26,6 +26,15 @@
                                 />
                             </div>
                             <div>
+                                <x-input-label for="description" value="Description (Optional)" class="dark:text-gray-300" />
+                                <textarea
+                                    id="description"
+                                    name="description"
+                                    rows="3"
+                                    class="mt-1 block w-full border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-md shadow-sm"
+                                ></textarea>
+                            </div>
+                            <div>
                                 <x-primary-button class="w-full justify-center">
                                     Create List
                                 </x-primary-button>
@@ -45,18 +54,42 @@
                                    class="text-xl font-bold text-gray-800 dark:text-gray-200 hover:text-gray-600 dark:hover:text-gray-400">
                                     {{ $list->title }}
                                 </a>
-                                <form action="{{ route('task-lists.destroy', $list) }}" method="POST" class="ml-2">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" 
-                                            onclick="return confirm('Are you sure you want to delete this list?')"
-                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                                <div class="flex items-center space-x-2">
+                                    <!-- Edit Icon -->
+                                    <a href="{{ route('task-lists.edit', $list) }}" 
+                                       class="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 relative group">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
                                         </svg>
-                                    </button>
-                                </form>
+                                        <!-- Tooltip -->
+                                        <span class="absolute hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 -top-8 -left-2">
+                                            Edit
+                                        </span>
+                                    </a>
+
+                                    <!-- Delete Icon -->
+                                    <form action="{{ route('task-lists.destroy', $list) }}" method="POST" class="relative group">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" 
+                                                onclick="return confirm('Are you sure you want to delete this list?')"
+                                                class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                            </svg>
+                                            <!-- Tooltip -->
+                                            <span class="absolute hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 -top-8 -left-2">
+                                                Delete
+                                            </span>
+                                        </button>
+                                    </form>
+                                </div>
                             </div>
+                            @if($list->description)
+                                <div class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                                    {{ $list->description }}
+                                </div>
+                            @endif
                             <div class="mt-4">
                                 <div class="text-sm text-gray-600 dark:text-gray-400">
                                     {{ $list->completed_tasks_count }} / {{ $list->tasks_count }} tasks completed
