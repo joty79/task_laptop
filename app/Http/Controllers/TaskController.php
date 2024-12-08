@@ -50,4 +50,31 @@ class TaskController extends Controller
         $task->delete();
         return back()->with('success', 'Task deleted successfully.');
     }
+
+    public function edit(Task $task)
+    {
+        Gate::authorize('update', $task->taskList);
+        return view('tasks.edit', compact('task'));
+    }
+
+    public function update(Request $request, Task $task)
+    {
+        Gate::authorize('update', $task->taskList);
+        
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'priority' => 'required|in:low,medium,high',
+            'deadline' => [
+                'required',
+                'date',
+                'after:today'
+            ]
+        ]);
+
+        $task->update($validated);
+
+        return redirect()
+            ->route('task-lists.show', $task->taskList)
+            ->with('success', 'Task updated successfully.');
+    }
 } 

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class TaskListController extends Controller
 {
@@ -39,38 +40,58 @@ class TaskListController extends Controller
     {
         Gate::authorize('view', $taskList);
         
-        $query = $taskList->tasks();
-
         // Add search functionality
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where('title', 'LIKE', $search . '%');
-        }
+        $tasks = $taskList->tasks();
 
-        // Filter by completion status
+        // Apply status filter
         if ($request->has('status')) {
-            if ($request->status === 'completed') {
-                $query->where('is_completed', true);
-            } elseif ($request->status === 'pending') {
-                $query->where('is_completed', false);
+            if ($request->status === 'pending') {
+                $tasks = $tasks->where('is_completed', false);
+            } elseif ($request->status === 'completed') {
+                $tasks = $tasks->where('is_completed', true);
             }
         }
 
-        // Sort tasks
+        // Apply sorting
         $sortBy = $request->sort ?? 'deadline';
         switch ($sortBy) {
             case 'priority':
-                $query->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
+                $tasks = $tasks->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
                 break;
             case 'deadline':
-                $query->orderBy('deadline');
+                $tasks = $tasks->orderBy('deadline');
                 break;
             case 'completion':
-                $query->orderBy('is_completed')->orderBy('deadline');
+                $tasks = $tasks->orderBy('is_completed')->orderBy('deadline');
                 break;
         }
 
-        $tasks = $query->get();
+        // Get all tasks and then filter by search if needed
+        $tasks = $tasks->get();
+        
+        if ($request->has('search')) {
+            $searchTerm = $request->search;
+            Log::info('Search term received:', [
+                'raw' => $searchTerm,
+                'url_encoded' => urlencode($searchTerm),
+                'length' => strlen($searchTerm)
+            ]);
+            
+            $tasks = $tasks->filter(function ($task) use ($searchTerm) {
+                $taskTitle = strtolower($task->title);
+                $searchTerm = strtolower($searchTerm);
+                Log::info('Comparing:', [
+                    'title' => $taskTitle,
+                    'search' => $searchTerm,
+                    'starts_with' => strpos($taskTitle, $searchTerm) === 0
+                ]);
+                return strpos($taskTitle, $searchTerm) === 0;
+            })->values();
+        }
+
+        if ($request->ajax()) {
+            return view('task-lists.partials.tasks-list', compact('tasks', 'taskList'))->render();
+        }
 
         return view('task-lists.show', compact('taskList', 'tasks', 'sortBy'));
     }
