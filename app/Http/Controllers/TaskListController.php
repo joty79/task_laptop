@@ -64,6 +64,11 @@ class TaskListController extends Controller
             case 'completion':
                 $tasks = $tasks->orderBy('is_completed')->orderBy('deadline');
                 break;
+            case 'custom':
+                $tasks = $tasks->orderBy('sort_order', 'asc');
+                break;
+            default:
+                $tasks = $tasks->orderBy('deadline');
         }
 
         // Get all tasks and then filter by search if needed

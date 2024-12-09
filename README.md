@@ -1,6 +1,6 @@
 # Task Manager - Changelog
 
-## Added Features (December 03, 2024)
+## Added Features (March 21, 2024)
 
 ### Task Progress Visualization
 - Added a dynamic progress bar for each task
@@ -44,11 +44,17 @@
   - By deadline (default)
   - By priority (High → Medium → Low)
   - By completion status
+  - Custom sort order with drag & drop
 - Added filtering options:
   - All tasks
   - Pending tasks only
   - Completed tasks only
 - Sort and filter selections persist with search
+- Drag & drop functionality:
+  - Intuitive task reordering with drag handle
+  - Visual feedback during dragging
+  - Persistent custom sort order
+  - Automatic order saving
 
 ### Search Improvements
 - Fixed special characters handling in search functionality

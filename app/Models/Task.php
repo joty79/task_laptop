@@ -17,6 +17,8 @@ class Task extends Model
         'priority',
         'deadline',
         'is_completed',
+        'sort_order',
+        'show_order',
     ];
 
     protected $casts = [

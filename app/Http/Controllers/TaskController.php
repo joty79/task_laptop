@@ -27,6 +27,13 @@ class TaskController extends Controller
             'deadline.after_or_equal' => 'The deadline must be today or a future date.'
         ]);
 
+        $maxOrders = $taskList->tasks()
+            ->selectRaw('MAX(sort_order) as max_sort, MAX(show_order) as max_show')
+            ->first();
+
+        $validated['sort_order'] = ($maxOrders->max_sort ?? -1) + 1;
+        $validated['show_order'] = ($maxOrders->max_show ?? -1) + 1;
+
         $taskList->tasks()->create($validated);
 
         return redirect()->route('task-lists.show', $taskList)
@@ -76,5 +83,19 @@ class TaskController extends Controller
         return redirect()
             ->route('task-lists.show', $task->taskList)
             ->with('success', 'Task updated successfully.');
+    }
+
+    public function updateOrder(Request $request, Task $task)
+    {
+        Gate::authorize('update', $task->taskList);
+        
+        $validated = $request->validate([
+            'sort_order' => 'required|integer',
+            'show_order' => 'required|integer',
+        ]);
+
+        $task->update($validated);
+
+        return response()->json(['success' => true]);
     }
 } 

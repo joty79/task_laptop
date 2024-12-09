@@ -135,6 +135,10 @@
                                         {{ request('sort') === 'completion' ? 'selected' : '' }}>
                                     Completion
                                 </option>
+                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => 'custom', 'status' => request('status')]) }}"
+                                        {{ request('sort') === 'custom' ? 'selected' : '' }}>
+                                    Custom
+                                </option>
                             </select>
                         </div>
 
@@ -166,152 +170,102 @@
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div id="tasksWrapper" class="relative" style="min-height: auto;">
                     <div id="tasksContainer" class="divide-y divide-gray-200 dark:divide-gray-700">
-                        @foreach($tasks as $task)
-                            <div class="p-4 flex items-center gap-4">
-                                <form action="{{ route('tasks.toggle-complete', $task) }}" method="POST">
-                                    @csrf
-                                    @method('PATCH')
-                                    <button type="submit" 
-                                            class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl">
-                                        @if($task->is_completed)
-                                            ✓
-                                        @else
-                                            ○
-                                        @endif
-                                    </button>
-                                </form>
-                                <div class="flex-1">
-                                    <div class="flex justify-between items-start">
-                                        <div class="{{ $task->is_completed ? 'line-through text-gray-500 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200' }}">
-                                            <div class="font-medium">{{ $task->title }}</div>
-                                            <div class="text-sm text-gray-600 dark:text-gray-400">
-                                                Priority: {{ ucfirst($task->priority) }}
-                                                @if($task->deadline)
-                                                    | Due: {{ $task->deadline->format('M d, Y') }}
-                                                @endif
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            @include('task-lists.partials.task-actions', ['task' => $task])
-                                        </div>
-                                    </div>
-                                    @if($task->deadline)
-                                        <div class="mt-2">
-                                            <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
-                                                <span>{{ $task->created_at->format('M d, Y') }}</span>
-                                                <span>{{ $task->getTimeStatus() }}</span>
-                                                <span>{{ $task->deadline->format('M d, Y') }}</span>
-                                            </div>
-                                            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 relative">
-                                                @if($task->is_completed)
-                                                    <div class="absolute h-1.5 rounded-full bg-green-600 left-0 top-0" style="width: 100%"></div>
-                                                @else
-                                                    <?php 
-                                                        $elapsedWidth = $task->getElapsedPercentage();
-                                                        $remainingWidth = 100 - $elapsedWidth;
-                                                    ?>
-                                                    <div class="absolute h-1.5 rounded-l-full bg-red-600 left-0 top-0" style="width: <?php echo $elapsedWidth; ?>%"></div>
-                                                    <div class="absolute h-1.5 rounded-r-full bg-blue-600 top-0" style="left: <?php echo $elapsedWidth; ?>%; width: <?php echo $remainingWidth; ?>%"></div>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    @endif
-                                </div>
-                            </div>
-                        @endforeach
+                        @include('task-lists.partials.tasks-list', ['tasks' => $tasks])
                     </div>
                 </div>
             </div>
 
             <script>
-                let searchTimeout;
-                let autocompleteTimeout;
-                const tasksContainer = document.getElementById('tasksContainer');
-                const tasksWrapper = document.getElementById('tasksWrapper');
+                const tasksContainer = document.querySelector('.tasks-list');
                 const searchInput = document.getElementById('taskSearch');
-                const suggestionText = document.getElementById('suggestionText');
                 const statusFilter = document.getElementById('status-filter');
-                const sortBy = document.getElementById('sort-by');
+                const sortBy = document.querySelector('select[onchange*="sort"]');
+                let sortableInstance = null;
 
-                // Store initial height when page loads
-                let fullHeight = tasksWrapper.offsetHeight;
+                // Initialize Sortable
+                function initSortable() {
+                    if (sortableInstance) {
+                        sortableInstance.destroy();
+                    }
 
-                // Function to fetch and update tasks
-                async function updateTasks() {
-                    const searchQuery = encodeURIComponent(searchInput.value);
-                    const status = statusFilter ? statusFilter.value : 'all';
-                    const sort = sortBy ? sortBy.value : 'deadline';
-                    
-                    // Always maintain the full height during any update
-                    tasksWrapper.style.minHeight = `${fullHeight}px`;
-                    
-                    try {
-                        const response = await fetch(`{{ route('task-lists.show', $taskList) }}?search=${searchQuery}&status=${status}&sort=${sort}`, {
-                            headers: {
-                                'X-Requested-With': 'XMLHttpRequest'
+                    const currentSort = new URL(window.location.href).searchParams.get('sort');
+                    if (currentSort === 'custom' && tasksContainer) {
+                        sortableInstance = Sortable.create(tasksContainer, {
+                            handle: '.drag-handle',
+                            animation: 150,
+                            draggable: '.task-item',
+                            onEnd: async function(evt) {
+                                const taskId = evt.item.dataset.taskId;
+                                const newIndex = evt.newIndex;
+                                
+                                try {
+                                    await fetch(`/tasks/${taskId}/order`, {
+                                        method: 'PATCH',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                                        },
+                                        body: JSON.stringify({
+                                            sort_order: newIndex,
+                                            show_order: newIndex
+                                        })
+                                    });
+                                } catch (error) {
+                                    console.error('Error updating task order:', error);
+                                }
                             }
                         });
+                    }
+                }
+
+                // Initialize on page load
+                initSortable();
+
+                // Update tasks function
+                async function updateTasks(url = null) {
+                    const searchQuery = searchInput ? encodeURIComponent(searchInput.value) : '';
+                    const status = statusFilter ? statusFilter.value : 'all';
+                    const fetchUrl = url || `{{ route('task-lists.show', $taskList) }}?search=${searchQuery}&status=${status}`;
+                    
+                    try {
+                        const response = await fetch(fetchUrl, {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
                         const html = await response.text();
-                        tasksContainer.innerHTML = html;
                         
-                        // Only update fullHeight and reset minHeight when explicitly clearing search
-                        if (!searchQuery && document.activeElement !== searchInput) {
-                            tasksWrapper.style.minHeight = 'auto';
-                            fullHeight = tasksWrapper.offsetHeight;
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = html;
+                        const newTasksList = tempDiv.querySelector('.tasks-list');
+                        
+                        if (newTasksList) {
+                            tasksContainer.innerHTML = newTasksList.innerHTML;
+                            initSortable();
                         }
                     } catch (error) {
                         console.error('Error fetching tasks:', error);
                     }
                 }
 
-                // Add event listeners
-                searchInput.addEventListener('input', (e) => {
-                    clearTimeout(searchTimeout);
-                    clearTimeout(autocompleteTimeout);
-                    
-                    // Clear previous suggestion immediately
-                    suggestionText.textContent = '';
-                    
-                    // Show autocomplete after 1 second
-                    autocompleteTimeout = setTimeout(() => {
-                        showInlineAutocomplete(e.target.value);
-                    }, 1000);
-                    
-                    // Update tasks after 300ms
-                    searchTimeout = setTimeout(updateTasks, 300);
-                });
+                // Event listeners
+                if (searchInput) {
+                    let timeout;
+                    searchInput.addEventListener('input', () => {
+                        clearTimeout(timeout);
+                        timeout = setTimeout(() => updateTasks(), 300);
+                    });
+                }
 
-                // Only reset height when search is explicitly cleared (e.g., by clicking X)
-                searchInput.addEventListener('blur', () => {
-                    if (!searchInput.value) {
-                        setTimeout(() => {
-                            tasksWrapper.style.minHeight = 'auto';
-                            fullHeight = tasksWrapper.offsetHeight;
-                        }, 100);
-                    }
-                });
-
-                searchInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Tab' && suggestionText.textContent) {
-                        e.preventDefault();
-                        const currentInput = searchInput.value;
-                        const suggestion = suggestionText.textContent;
-                        searchInput.value = currentInput + suggestion;
-                        suggestionText.textContent = '';
-                        updateTasks();
-                    }
-                });
+                if (sortBy) {
+                    sortBy.addEventListener('change', function(e) {
+                        const url = e.target.value;
+                        window.history.pushState({}, '', url);
+                        updateTasks(url);
+                    });
+                }
 
                 if (statusFilter) {
-                    statusFilter.addEventListener('change', updateTasks);
+                    statusFilter.addEventListener('change', () => updateTasks());
                 }
-                if (sortBy) {
-                    sortBy.addEventListener('change', updateTasks);
-                }
-
-                // Add styles for smooth transitions
-                tasksContainer.style.transition = 'height 0.3s ease-in-out';
-                tasksContainer.style.overflow = 'hidden';
             </script>
         </div>
     </div>

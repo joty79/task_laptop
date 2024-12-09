@@ -16,6 +16,8 @@ return new class extends Migration
             $table->enum('priority', ['low', 'medium', 'high'])->default('medium');
             $table->timestamp('deadline')->nullable();
             $table->boolean('is_completed')->default(false);
+            $table->integer('sort_order')->default(0);
+            $table->integer('show_order')->default(0);
             $table->timestamps();
         });
     }
