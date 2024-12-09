@@ -121,22 +121,18 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-gray-600 dark:text-gray-400">Sort by:</span>
                             <select 
-                                onchange="window.location.href = this.value"
+                                id="sort-select"
                                 class="text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => 'deadline', 'status' => request('status')]) }}" 
-                                        {{ request('sort', 'deadline') === 'deadline' ? 'selected' : '' }}>
+                                <option value="deadline" {{ request('sort', 'deadline') === 'deadline' ? 'selected' : '' }}>
                                     Deadline
                                 </option>
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => 'priority', 'status' => request('status')]) }}"
-                                        {{ request('sort') === 'priority' ? 'selected' : '' }}>
+                                <option value="priority" {{ request('sort') === 'priority' ? 'selected' : '' }}>
                                     Priority
                                 </option>
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => 'completion', 'status' => request('status')]) }}"
-                                        {{ request('sort') === 'completion' ? 'selected' : '' }}>
+                                <option value="completion" {{ request('sort') === 'completion' ? 'selected' : '' }}>
                                     Completion
                                 </option>
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => 'custom', 'status' => request('status')]) }}"
-                                        {{ request('sort') === 'custom' ? 'selected' : '' }}>
+                                <option value="custom" {{ request('sort') === 'custom' ? 'selected' : '' }}>
                                     Custom
                                 </option>
                             </select>
@@ -146,18 +142,15 @@
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-gray-600 dark:text-gray-400">Show:</span>
                             <select 
-                                onchange="window.location.href = this.value"
+                                id="status-select"
                                 class="text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => request('sort'), 'status' => 'all']) }}"
-                                        {{ !request('status') || request('status') === 'all' ? 'selected' : '' }}>
+                                <option value="all" {{ !request('status') || request('status') === 'all' ? 'selected' : '' }}>
                                     All Tasks
                                 </option>
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => request('sort'), 'status' => 'pending']) }}"
-                                        {{ request('status') === 'pending' ? 'selected' : '' }}>
+                                <option value="pending" {{ request('status') === 'pending' ? 'selected' : '' }}>
                                     Pending Only
                                 </option>
-                                <option value="{{ route('task-lists.show', ['taskList' => $taskList, 'sort' => request('sort'), 'status' => 'completed']) }}"
-                                        {{ request('status') === 'completed' ? 'selected' : '' }}>
+                                <option value="completed" {{ request('status') === 'completed' ? 'selected' : '' }}>
                                     Completed Only
                                 </option>
                             </select>
@@ -168,7 +161,7 @@
 
             <!-- Tasks List -->
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                <div id="tasksWrapper" class="relative" style="min-height: auto;">
+                <div id="tasksWrapper" class="relative transition-all duration-200">
                     <div id="tasksContainer" class="divide-y divide-gray-200 dark:divide-gray-700">
                         @include('task-lists.partials.tasks-list', ['tasks' => $tasks])
                     </div>
@@ -177,10 +170,40 @@
 
             <script>
                 const tasksContainer = document.querySelector('.tasks-list');
+                const tasksWrapper = document.getElementById('tasksWrapper');
                 const searchInput = document.getElementById('taskSearch');
-                const statusFilter = document.getElementById('status-filter');
-                const sortBy = document.querySelector('select[onchange*="sort"]');
+                const statusSelect = document.getElementById('status-select');
+                const sortSelect = document.getElementById('sort-select');
                 let sortableInstance = null;
+                let maxHeight = null;
+
+                // Function to get initial max height
+                function setInitialMaxHeight() {
+                    if (tasksWrapper && !maxHeight) {
+                        maxHeight = tasksWrapper.offsetHeight;
+                        tasksWrapper.style.minHeight = `${maxHeight}px`;
+                    }
+                }
+
+                // Function to preserve viewport height
+                function preserveHeight() {
+                    if (tasksWrapper && maxHeight) {
+                        tasksWrapper.style.minHeight = `${maxHeight}px`;
+                    }
+                }
+
+                // Function to update height while maintaining minimum
+                function updateHeight() {
+                    if (tasksWrapper) {
+                        const currentHeight = tasksContainer.offsetHeight;
+                        // Only update maxHeight if current height is larger
+                        if (currentHeight > maxHeight) {
+                            maxHeight = currentHeight;
+                        }
+                        // Always maintain at least the max height
+                        tasksWrapper.style.minHeight = `${maxHeight}px`;
+                    }
+                }
 
                 // Initialize Sortable
                 function initSortable() {
@@ -188,8 +211,7 @@
                         sortableInstance.destroy();
                     }
 
-                    const currentSort = new URL(window.location.href).searchParams.get('sort');
-                    if (currentSort === 'custom' && tasksContainer) {
+                    if (sortSelect.value === 'custom' && tasksContainer) {
                         sortableInstance = Sortable.create(tasksContainer, {
                             handle: '.drag-handle',
                             animation: 150,
@@ -219,20 +241,32 @@
                 }
 
                 // Initialize on page load
+                setInitialMaxHeight();
                 initSortable();
 
                 // Update tasks function
-                async function updateTasks(url = null) {
+                async function updateTasks() {
+                    preserveHeight();
+                    
                     const searchQuery = searchInput ? encodeURIComponent(searchInput.value) : '';
-                    const status = statusFilter ? statusFilter.value : 'all';
-                    const fetchUrl = url || `{{ route('task-lists.show', $taskList) }}?search=${searchQuery}&status=${status}`;
+                    const status = statusSelect ? statusSelect.value : 'all';
+                    const sort = sortSelect ? sortSelect.value : 'deadline';
+                    
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('search', searchQuery);
+                    url.searchParams.set('status', status);
+                    url.searchParams.set('sort', sort);
                     
                     try {
-                        const response = await fetch(fetchUrl, {
+                        const response = await fetch(url.toString(), {
                             headers: { 'X-Requested-With': 'XMLHttpRequest' }
                         });
-                        const html = await response.text();
                         
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        
+                        const html = await response.text();
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = html;
                         const newTasksList = tempDiv.querySelector('.tasks-list');
@@ -240,32 +274,53 @@
                         if (newTasksList) {
                             tasksContainer.innerHTML = newTasksList.innerHTML;
                             initSortable();
+                            window.history.pushState({}, '', url.toString());
+                            updateHeight();
                         }
                     } catch (error) {
                         console.error('Error fetching tasks:', error);
                     }
                 }
 
-                // Event listeners
-                if (searchInput) {
+                // Event listeners with debounce for all changes
+                function debounce(func, wait) {
                     let timeout;
-                    searchInput.addEventListener('input', () => {
+                    return function executedFunction(...args) {
+                        const later = () => {
+                            clearTimeout(timeout);
+                            func(...args);
+                        };
                         clearTimeout(timeout);
-                        timeout = setTimeout(() => updateTasks(), 300);
+                        timeout = setTimeout(later, wait);
+                    };
+                }
+
+                const debouncedUpdate = debounce(updateTasks, 300);
+
+                if (searchInput) {
+                    searchInput.addEventListener('input', debouncedUpdate);
+                }
+
+                if (sortSelect) {
+                    sortSelect.addEventListener('change', () => {
+                        preserveHeight();
+                        debouncedUpdate();
                     });
                 }
 
-                if (sortBy) {
-                    sortBy.addEventListener('change', function(e) {
-                        const url = e.target.value;
-                        window.history.pushState({}, '', url);
-                        updateTasks(url);
+                if (statusSelect) {
+                    statusSelect.addEventListener('change', () => {
+                        preserveHeight();
+                        debouncedUpdate();
                     });
                 }
 
-                if (statusFilter) {
-                    statusFilter.addEventListener('change', () => updateTasks());
-                }
+                // Update max height when new tasks are added
+                document.addEventListener('submit', (e) => {
+                    if (e.target.matches('form[action*="tasks"]')) {
+                        setTimeout(updateHeight, 500);
+                    }
+                });
             </script>
         </div>
     </div>
