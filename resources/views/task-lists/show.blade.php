@@ -172,6 +172,7 @@
                 const tasksContainer = document.querySelector('.tasks-list');
                 const tasksWrapper = document.getElementById('tasksWrapper');
                 const searchInput = document.getElementById('taskSearch');
+                const suggestionText = document.getElementById('suggestionText');
                 const statusSelect = document.getElementById('status-select');
                 const sortSelect = document.getElementById('sort-select');
                 let sortableInstance = null;
@@ -202,6 +203,42 @@
                         }
                         // Always maintain at least the max height
                         tasksWrapper.style.minHeight = `${maxHeight}px`;
+                    }
+                }
+
+                // Function to update suggestion text
+                function updateSuggestion(inputValue) {
+                    if (!suggestionText) return;
+                    
+                    const tasks = Array.from(document.querySelectorAll('.task-item')).map(item => {
+                        const titleEl = item.querySelector('.font-medium');
+                        return titleEl ? titleEl.textContent.trim() : '';
+                    });
+
+                    const searchTerm = inputValue.toLowerCase();
+                    const suggestion = tasks.find(task => {
+                        const taskLower = task.toLowerCase();
+                        // Exact match for special characters
+                        return taskLower.startsWith(searchTerm) && searchTerm !== taskLower;
+                    });
+
+                    if (suggestion && searchTerm) {
+                        const remainingPart = suggestion.substring(searchTerm.length);
+                        suggestionText.innerHTML = remainingPart;
+                        
+                        // Calculate and set the suggestion offset
+                        const tempSpan = document.createElement('span');
+                        tempSpan.style.visibility = 'hidden';
+                        tempSpan.style.position = 'absolute';
+                        tempSpan.style.fontSize = window.getComputedStyle(searchInput).fontSize;
+                        tempSpan.textContent = searchTerm;
+                        document.body.appendChild(tempSpan);
+                        const offset = tempSpan.offsetWidth;
+                        document.body.removeChild(tempSpan);
+                        
+                        document.documentElement.style.setProperty('--suggestion-offset', offset + 'px');
+                    } else {
+                        suggestionText.innerHTML = '';
                     }
                 }
 
@@ -248,7 +285,14 @@
                 async function updateTasks() {
                     preserveHeight();
                     
-                    const searchQuery = searchInput ? encodeURIComponent(searchInput.value) : '';
+                    // Properly encode search query to handle special characters
+                    const rawSearchQuery = searchInput ? searchInput.value : '';
+                    const searchQuery = encodeURIComponent(rawSearchQuery)
+                        .replace(/%2B/g, '+') // Keep + as is
+                        .replace(/%23/g, '#') // Keep # as is
+                        .replace(/%26/g, '&') // Keep & as is
+                        .replace(/%25/g, '%'); // Keep % as is
+                    
                     const status = statusSelect ? statusSelect.value : 'all';
                     const sort = sortSelect ? sortSelect.value : 'deadline';
                     
@@ -259,7 +303,10 @@
                     
                     try {
                         const response = await fetch(url.toString(), {
-                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                            headers: { 
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Content-Type': 'application/json'
+                            }
                         });
                         
                         if (!response.ok) {
@@ -276,6 +323,8 @@
                             initSortable();
                             window.history.pushState({}, '', url.toString());
                             updateHeight();
+                            // Update suggestion after content update
+                            updateSuggestion(rawSearchQuery);
                         }
                     } catch (error) {
                         console.error('Error fetching tasks:', error);
@@ -298,7 +347,21 @@
                 const debouncedUpdate = debounce(updateTasks, 300);
 
                 if (searchInput) {
-                    searchInput.addEventListener('input', debouncedUpdate);
+                    // Handle input changes
+                    searchInput.addEventListener('input', (e) => {
+                        updateSuggestion(e.target.value);
+                        debouncedUpdate();
+                    });
+
+                    // Handle tab key for autocomplete
+                    searchInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Tab' && suggestionText.textContent) {
+                            e.preventDefault();
+                            searchInput.value += suggestionText.textContent;
+                            suggestionText.textContent = '';
+                            debouncedUpdate();
+                        }
+                    });
                 }
 
                 if (sortSelect) {
