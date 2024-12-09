@@ -28,16 +28,19 @@ class TaskController extends Controller
         ]);
 
         $maxOrders = $taskList->tasks()
-            ->selectRaw('MAX(sort_order) as max_sort, MAX(show_order) as max_show')
+            ->selectRaw('COALESCE(MAX(sort_order), -1) as max_sort, COALESCE(MAX(show_order), -1) as max_show')
             ->first();
 
-        $validated['sort_order'] = ($maxOrders->max_sort ?? -1) + 1;
-        $validated['show_order'] = ($maxOrders->max_show ?? -1) + 1;
+        $validated['sort_order'] = $maxOrders->max_sort + 1;
+        $validated['show_order'] = $maxOrders->max_show + 1;
 
         $taskList->tasks()->create($validated);
 
-        return redirect()->route('task-lists.show', $taskList)
-            ->with('success', 'Task created successfully.');
+        return redirect()->route('task-lists.show', [
+            'taskList' => $taskList,
+            'sort' => $request->query('sort', 'deadline'),
+            'direction' => $request->query('direction', 'asc')
+        ])->with('success', 'Task created successfully.');
     }
 
     public function toggleComplete(Task $task)

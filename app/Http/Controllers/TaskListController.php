@@ -54,21 +54,31 @@ class TaskListController extends Controller
 
         // Apply sorting
         $sortBy = $request->sort ?? 'deadline';
+        $direction = $request->direction === 'desc' ? 'desc' : 'asc';
+
         switch ($sortBy) {
             case 'priority':
-                $tasks = $tasks->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
+                if ($direction === 'desc') {
+                    $tasks = $tasks->orderByRaw("FIELD(priority, 'low', 'medium', 'high')");
+                } else {
+                    $tasks = $tasks->orderByRaw("FIELD(priority, 'high', 'medium', 'low')");
+                }
                 break;
             case 'deadline':
-                $tasks = $tasks->orderBy('deadline');
+                $tasks = $tasks->orderBy('deadline', $direction);
                 break;
             case 'completion':
-                $tasks = $tasks->orderBy('is_completed')->orderBy('deadline');
+                if ($direction === 'desc') {
+                    $tasks = $tasks->orderBy('is_completed', 'desc')->orderBy('deadline', $direction);
+                } else {
+                    $tasks = $tasks->orderBy('is_completed', 'asc')->orderBy('deadline', $direction);
+                }
                 break;
             case 'custom':
-                $tasks = $tasks->orderBy('sort_order', 'asc');
+                $tasks = $tasks->orderBy('sort_order', $direction);
                 break;
             default:
-                $tasks = $tasks->orderBy('deadline');
+                $tasks = $tasks->orderBy('deadline', $direction);
         }
 
         // Get all tasks and then filter by search if needed

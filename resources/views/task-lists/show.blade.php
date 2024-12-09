@@ -35,6 +35,8 @@
                 <div class="p-6 border-b border-gray-200 dark:border-gray-700">
                     <form action="{{ route('tasks.store', $taskList) }}" method="POST">
                         @csrf
+                        <input type="hidden" name="sort" value="{{ request('sort', 'deadline') }}">
+                        <input type="hidden" name="direction" value="{{ request('direction', 'asc') }}">
                         <div class="space-y-4">
                             <div>
                                 <x-input-label for="title" value="Task Title" class="dark:text-gray-300" />
@@ -191,7 +193,8 @@
                 let sortableInstance = null;
                 let maxHeight = null;
                 let lastCustomOrder = new Map();
-                let isAscending = true;
+                let isAscending = new URL(window.location.href).searchParams.get('direction') !== 'desc';
+                let lastSortMode = sortSelect.value;
 
                 // Function to toggle sort direction icon
                 function updateSortDirectionIcon() {
@@ -200,18 +203,31 @@
                     sortDirection.title = isAscending ? 'Sort Descending' : 'Sort Ascending';
                 }
 
-                // Function to save current task order
+                // Function to save current custom order
                 function saveCurrentOrder() {
                     if (sortSelect.value === 'custom') {
                         lastCustomOrder.clear();
                         document.querySelectorAll('.task-item').forEach((item, index) => {
                             lastCustomOrder.set(item.dataset.taskId, index);
                         });
+                        // Store in localStorage for persistence
+                        localStorage.setItem('customOrder', JSON.stringify(Array.from(lastCustomOrder.entries())));
+                    }
+                }
+
+                // Function to load custom order from storage
+                function loadCustomOrder() {
+                    const stored = localStorage.getItem('customOrder');
+                    if (stored) {
+                        lastCustomOrder = new Map(JSON.parse(stored));
                     }
                 }
 
                 // Function to restore custom order
                 async function restoreCustomOrder() {
+                    if (lastCustomOrder.size === 0) {
+                        loadCustomOrder();
+                    }
                     if (lastCustomOrder.size === 0) return;
 
                     const tasks = Array.from(document.querySelectorAll('.task-item'));
@@ -226,10 +242,12 @@
                     }
 
                     // Update DOM and server
-                    orderedTasks.forEach((task, index) => {
+                    const promises = orderedTasks.map((task, index) => {
                         tasksContainer.appendChild(task);
-                        updateTaskOrder(task.dataset.taskId, index);
+                        return updateTaskOrder(task.dataset.taskId, index);
                     });
+
+                    await Promise.all(promises);
                 }
 
                 // Function to update task order on server
@@ -347,26 +365,17 @@
                     }
                 }
 
-                // Update tasks function
-                async function updateTasks() {
-                    preserveHeight();
-                    
-                    const rawSearchQuery = searchInput ? searchInput.value : '';
-                    const searchQuery = encodeURIComponent(rawSearchQuery)
-                        .replace(/%2B/g, '+')
-                        .replace(/%23/g, '#')
-                        .replace(/%26/g, '&')
-                        .replace(/%25/g, '%');
-                    
-                    const status = statusSelect ? statusSelect.value : 'all';
-                    const sort = sortSelect ? sortSelect.value : 'deadline';
-                    const wasCustom = sort === 'custom';
-                    
+                // Function to update tasks with current sort and direction
+                async function updateTasksWithSort() {
                     const url = new URL(window.location.href);
-                    url.searchParams.set('search', searchQuery);
-                    url.searchParams.set('status', status);
-                    url.searchParams.set('sort', sort);
                     url.searchParams.set('direction', isAscending ? 'asc' : 'desc');
+                    url.searchParams.set('sort', sortSelect.value);
+                    url.searchParams.set('status', statusSelect.value);
+                    if (searchInput.value) {
+                        url.searchParams.set('search', searchInput.value);
+                    } else {
+                        url.searchParams.delete('search');
+                    }
                     
                     try {
                         const response = await fetch(url.toString(), {
@@ -386,22 +395,20 @@
                         const newTasksList = tempDiv.querySelector('.tasks-list');
                         
                         if (newTasksList) {
-                            tasksContainer.innerHTML = newTasksList.innerHTML;
-                            if (wasCustom) {
-                                await restoreCustomOrder();
-                            } else if (!isAscending) {
-                                // Reverse DOM elements for non-custom sort
-                                Array.from(tasksContainer.children)
-                                    .reverse()
-                                    .forEach(task => tasksContainer.appendChild(task));
+                            // Save custom order before changing if we're leaving custom mode
+                            if (lastSortMode === 'custom' && sortSelect.value !== 'custom') {
+                                saveCurrentOrder();
                             }
+                            
+                            tasksContainer.innerHTML = newTasksList.innerHTML;
                             initSortable();
                             window.history.pushState({}, '', url.toString());
                             updateHeight();
-                            updateSuggestion(rawSearchQuery);
+                            
+                            lastSortMode = sortSelect.value;
                         }
                     } catch (error) {
-                        console.error('Error fetching tasks:', error);
+                        console.error('Error updating tasks:', error);
                     }
                 }
 
@@ -418,44 +425,49 @@
                     };
                 }
 
-                const debouncedUpdate = debounce(updateTasks, 300);
+                const debouncedUpdate = debounce(updateTasksWithSort, 300);
 
                 if (searchInput) {
-                    searchInput.addEventListener('input', (e) => {
-                        updateSuggestion(e.target.value);
+                    searchInput.addEventListener('input', () => {
+                        preserveHeight();
                         debouncedUpdate();
-                    });
-
-                    searchInput.addEventListener('keydown', (e) => {
-                        if (e.key === 'Tab' && suggestionText.textContent) {
-                            e.preventDefault();
-                            searchInput.value += suggestionText.textContent;
-                            suggestionText.textContent = '';
-                            debouncedUpdate();
-                        }
-                    });
-                }
-
-                if (sortDirection) {
-                    sortDirection.addEventListener('click', () => {
-                        isAscending = !isAscending;
-                        updateSortDirectionIcon();
-                        if (sortSelect.value === 'custom') {
-                            const tasks = Array.from(tasksContainer.children);
-                            tasks.reverse().forEach(task => tasksContainer.appendChild(task));
-                            tasks.forEach((task, index) => {
-                                updateTaskOrder(task.dataset.taskId, index);
-                            });
-                        } else {
-                            debouncedUpdate();
-                        }
                     });
                 }
 
                 if (statusSelect) {
                     statusSelect.addEventListener('change', () => {
                         preserveHeight();
-                        debouncedUpdate();
+                        updateTasksWithSort();
+                    });
+                }
+
+                if (sortSelect) {
+                    sortSelect.addEventListener('change', () => {
+                        preserveHeight();
+                        if (sortSelect.value === 'custom') {
+                            restoreCustomOrder().then(() => {
+                                initSortable();
+                                updateHeight();
+                            });
+                        } else {
+                            updateTasksWithSort();
+                        }
+                    });
+                }
+
+                if (sortDirection) {
+                    sortDirection.addEventListener('click', () => {
+                        preserveHeight();
+                        isAscending = !isAscending;
+                        updateSortDirectionIcon();
+                        
+                        if (sortSelect.value === 'custom') {
+                            const tasks = Array.from(tasksContainer.children);
+                            tasks.reverse().forEach(task => tasksContainer.appendChild(task));
+                            saveCurrentOrder();
+                        } else {
+                            updateTasksWithSort();
+                        }
                     });
                 }
 
@@ -463,8 +475,16 @@
                 setInitialMaxHeight();
                 initSortable();
                 updateSortDirectionIcon();
+                loadCustomOrder(); // Load any saved custom order
                 if (sortSelect.value === 'custom') {
                     saveCurrentOrder();
+                }
+
+                // Save custom order when tasks are manually sorted
+                if (sortableInstance) {
+                    sortableInstance.option('onEnd', function() {
+                        saveCurrentOrder();
+                    });
                 }
 
                 // Update max height when new tasks are added
