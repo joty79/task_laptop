@@ -120,22 +120,34 @@
                         <!-- Sort Options -->
                         <div class="flex items-center gap-2">
                             <span class="text-sm text-gray-600 dark:text-gray-400">Sort by:</span>
-                            <select 
-                                id="sort-select"
-                                class="text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="deadline" {{ request('sort', 'deadline') === 'deadline' ? 'selected' : '' }}>
-                                    Deadline
-                                </option>
-                                <option value="priority" {{ request('sort') === 'priority' ? 'selected' : '' }}>
-                                    Priority
-                                </option>
-                                <option value="completion" {{ request('sort') === 'completion' ? 'selected' : '' }}>
-                                    Completion
-                                </option>
-                                <option value="custom" {{ request('sort') === 'custom' ? 'selected' : '' }}>
-                                    Custom
-                                </option>
-                            </select>
+                            <div class="flex items-center gap-1">
+                                <select 
+                                    id="sort-select"
+                                    class="text-sm border-gray-300 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="deadline" {{ request('sort', 'deadline') === 'deadline' ? 'selected' : '' }}>
+                                        Deadline
+                                    </option>
+                                    <option value="priority" {{ request('sort') === 'priority' ? 'selected' : '' }}>
+                                        Priority
+                                    </option>
+                                    <option value="completion" {{ request('sort') === 'completion' ? 'selected' : '' }}>
+                                        Completion
+                                    </option>
+                                    <option value="custom" {{ request('sort') === 'custom' ? 'selected' : '' }}>
+                                        Custom
+                                    </option>
+                                </select>
+                                <button 
+                                    id="sort-direction"
+                                    type="button"
+                                    class="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors duration-200"
+                                    title="Toggle sort direction"
+                                >
+                                    <svg class="w-4 h-4 transform transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 16h7m-7-8h12m4 0l-3-3m3 3l-3 3m3 5l-3-3m3 3l-3 3" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Filter Options -->
@@ -175,8 +187,69 @@
                 const suggestionText = document.getElementById('suggestionText');
                 const statusSelect = document.getElementById('status-select');
                 const sortSelect = document.getElementById('sort-select');
+                const sortDirection = document.getElementById('sort-direction');
                 let sortableInstance = null;
                 let maxHeight = null;
+                let lastCustomOrder = new Map();
+                let isAscending = true;
+
+                // Function to toggle sort direction icon
+                function updateSortDirectionIcon() {
+                    const svg = sortDirection.querySelector('svg');
+                    svg.style.transform = isAscending ? 'rotate(0deg)' : 'rotate(180deg)';
+                    sortDirection.title = isAscending ? 'Sort Descending' : 'Sort Ascending';
+                }
+
+                // Function to save current task order
+                function saveCurrentOrder() {
+                    if (sortSelect.value === 'custom') {
+                        lastCustomOrder.clear();
+                        document.querySelectorAll('.task-item').forEach((item, index) => {
+                            lastCustomOrder.set(item.dataset.taskId, index);
+                        });
+                    }
+                }
+
+                // Function to restore custom order
+                async function restoreCustomOrder() {
+                    if (lastCustomOrder.size === 0) return;
+
+                    const tasks = Array.from(document.querySelectorAll('.task-item'));
+                    const orderedTasks = tasks.sort((a, b) => {
+                        const orderA = lastCustomOrder.get(a.dataset.taskId) ?? 0;
+                        const orderB = lastCustomOrder.get(b.dataset.taskId) ?? 0;
+                        return orderA - orderB;
+                    });
+
+                    if (!isAscending) {
+                        orderedTasks.reverse();
+                    }
+
+                    // Update DOM and server
+                    orderedTasks.forEach((task, index) => {
+                        tasksContainer.appendChild(task);
+                        updateTaskOrder(task.dataset.taskId, index);
+                    });
+                }
+
+                // Function to update task order on server
+                async function updateTaskOrder(taskId, newIndex) {
+                    try {
+                        await fetch(`/tasks/${taskId}/order`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({
+                                sort_order: newIndex,
+                                show_order: newIndex
+                            })
+                        });
+                    } catch (error) {
+                        console.error('Error updating task order:', error);
+                    }
+                }
 
                 // Function to get initial max height
                 function setInitialMaxHeight() {
@@ -246,6 +319,7 @@
                 function initSortable() {
                     if (sortableInstance) {
                         sortableInstance.destroy();
+                        sortableInstance = null;
                     }
 
                     if (sortSelect.value === 'custom' && tasksContainer) {
@@ -253,22 +327,18 @@
                             handle: '.drag-handle',
                             animation: 150,
                             draggable: '.task-item',
+                            onStart: function() {
+                                // Save the current order before dragging
+                                saveCurrentOrder();
+                            },
                             onEnd: async function(evt) {
                                 const taskId = evt.item.dataset.taskId;
                                 const newIndex = evt.newIndex;
                                 
                                 try {
-                                    await fetch(`/tasks/${taskId}/order`, {
-                                        method: 'PATCH',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                                        },
-                                        body: JSON.stringify({
-                                            sort_order: newIndex,
-                                            show_order: newIndex
-                                        })
-                                    });
+                                    await updateTaskOrder(taskId, newIndex);
+                                    // Update the stored order
+                                    lastCustomOrder.set(taskId, newIndex);
                                 } catch (error) {
                                     console.error('Error updating task order:', error);
                                 }
@@ -277,29 +347,26 @@
                     }
                 }
 
-                // Initialize on page load
-                setInitialMaxHeight();
-                initSortable();
-
                 // Update tasks function
                 async function updateTasks() {
                     preserveHeight();
                     
-                    // Properly encode search query to handle special characters
                     const rawSearchQuery = searchInput ? searchInput.value : '';
                     const searchQuery = encodeURIComponent(rawSearchQuery)
-                        .replace(/%2B/g, '+') // Keep + as is
-                        .replace(/%23/g, '#') // Keep # as is
-                        .replace(/%26/g, '&') // Keep & as is
-                        .replace(/%25/g, '%'); // Keep % as is
+                        .replace(/%2B/g, '+')
+                        .replace(/%23/g, '#')
+                        .replace(/%26/g, '&')
+                        .replace(/%25/g, '%');
                     
                     const status = statusSelect ? statusSelect.value : 'all';
                     const sort = sortSelect ? sortSelect.value : 'deadline';
+                    const wasCustom = sort === 'custom';
                     
                     const url = new URL(window.location.href);
                     url.searchParams.set('search', searchQuery);
                     url.searchParams.set('status', status);
                     url.searchParams.set('sort', sort);
+                    url.searchParams.set('direction', isAscending ? 'asc' : 'desc');
                     
                     try {
                         const response = await fetch(url.toString(), {
@@ -320,10 +387,17 @@
                         
                         if (newTasksList) {
                             tasksContainer.innerHTML = newTasksList.innerHTML;
+                            if (wasCustom) {
+                                await restoreCustomOrder();
+                            } else if (!isAscending) {
+                                // Reverse DOM elements for non-custom sort
+                                Array.from(tasksContainer.children)
+                                    .reverse()
+                                    .forEach(task => tasksContainer.appendChild(task));
+                            }
                             initSortable();
                             window.history.pushState({}, '', url.toString());
                             updateHeight();
-                            // Update suggestion after content update
                             updateSuggestion(rawSearchQuery);
                         }
                     } catch (error) {
@@ -347,13 +421,11 @@
                 const debouncedUpdate = debounce(updateTasks, 300);
 
                 if (searchInput) {
-                    // Handle input changes
                     searchInput.addEventListener('input', (e) => {
                         updateSuggestion(e.target.value);
                         debouncedUpdate();
                     });
 
-                    // Handle tab key for autocomplete
                     searchInput.addEventListener('keydown', (e) => {
                         if (e.key === 'Tab' && suggestionText.textContent) {
                             e.preventDefault();
@@ -364,10 +436,19 @@
                     });
                 }
 
-                if (sortSelect) {
-                    sortSelect.addEventListener('change', () => {
-                        preserveHeight();
-                        debouncedUpdate();
+                if (sortDirection) {
+                    sortDirection.addEventListener('click', () => {
+                        isAscending = !isAscending;
+                        updateSortDirectionIcon();
+                        if (sortSelect.value === 'custom') {
+                            const tasks = Array.from(tasksContainer.children);
+                            tasks.reverse().forEach(task => tasksContainer.appendChild(task));
+                            tasks.forEach((task, index) => {
+                                updateTaskOrder(task.dataset.taskId, index);
+                            });
+                        } else {
+                            debouncedUpdate();
+                        }
                     });
                 }
 
@@ -378,10 +459,23 @@
                     });
                 }
 
+                // Initialize
+                setInitialMaxHeight();
+                initSortable();
+                updateSortDirectionIcon();
+                if (sortSelect.value === 'custom') {
+                    saveCurrentOrder();
+                }
+
                 // Update max height when new tasks are added
                 document.addEventListener('submit', (e) => {
                     if (e.target.matches('form[action*="tasks"]')) {
-                        setTimeout(updateHeight, 500);
+                        setTimeout(() => {
+                            updateHeight();
+                            if (sortSelect.value === 'custom') {
+                                saveCurrentOrder();
+                            }
+                        }, 500);
                     }
                 });
             </script>
